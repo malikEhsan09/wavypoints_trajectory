@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Waypoint Map</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <!-- Add Font Awesome for better icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            display: flex;
+            width: 90%;
+            height: 90%;
+            border-radius: 15px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        .sidebar {
+            width: 300px;
+            background: #2c3e50;
+            padding: 20px;
+            border-radius: 15px 0 0 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+            max-height: 100%;
+            color: white;
+        }
+        #map {
+            flex: 1;
+            height: 100%;
+            border-radius: 0 15px 15px 0;
+        }
+        .waypoint-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #34495e;
+            padding: 15px;
+            margin: 8px 0;
+            border-radius: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .waypoint-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: auto;
+            flex-direction: column;
+            position: sticky;
+            bottom: 0;
+            background: #2c3e50;
+            padding: 10px 0;
+        }
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .send-btn {
+            background: #27ae60;
+            color: white;
+        }
+        .send-btn:hover {
+            background: #219a52;
+            transform: translateY(-2px);
+        }
+        .clear-btn {
+            background: #e74c3c;
+            color: white;
+        }
+        .clear-btn:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+        }
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 8px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        .delete-btn:hover {
+            background: #c0392b;
+            transform: scale(1.1);
+        }
+        .altitude-input {
+            width: 70px;
+            padding: 5px;
+            margin-left: 5px;
+            border: 1px solid #34495e;
+            border-radius: 4px;
+            background: #2c3e50;
+            color: white;
+        }
+        .altitude-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        h2 {
+            color: #ecf0f1;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        .waypoint-info {
+            flex: 1;
+        }
+        .waypoint-controls {
+            display: flex;
+            gap: 8px;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .sending {
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2><i class="fas fa-map-marker-alt"></i> Waypoint Controls</h2>
+            <p><strong>Total Waypoints:</strong> <span id="remaining">0</span></p>
+            <div id="waypoints">
+                <!-- Waypoints will be dynamically added here -->
+            </div>
+            <div class="button-group">
+                <button class="send-btn" onclick="sendWaypoints()">
+                    <i class="fas fa-paper-plane"></i> Send Waypoints
+                </button>
+                <button class="clear-btn" onclick="clearAllWaypoints()">
+                    <i class="fas fa-trash-alt"></i> Clear All
+                </button>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+
+    <script>
+        let map = L.map('map').setView([33.65648, 73.01638], 17);
+        // Initialize empty arrays for unlimited waypoints
+        let waypoints = [];
+        let markers = [];
+        let polyline = null;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        updateWaypointList();
+
+        map.on('click', function(e) {
+            addWaypoint(e.latlng.lat, e.latlng.lng, 50);
+        });
+
+        function addWaypoint(lat, lng, altitude) {
+            altitude = Math.min(altitude, 80);
+            let marker = L.marker([lat, lng]).addTo(map);
+            markers.push(marker);
+            waypoints.push({ lat, lng, altitude });
+            updateWaypointList();
+            drawPolyline();
+        }
+
+        function updateWaypointList() {
+            document.getElementById('remaining').textContent = waypoints.length;
+            let waypointDiv = document.getElementById('waypoints');
+            waypointDiv.innerHTML = '';
+            
+            waypoints.forEach((wp, index) => {
+                let div = document.createElement('div');
+                div.className = 'waypoint-item';
+                
+                div.innerHTML = `
+                    <div class="waypoint-info">
+                        <strong><i class="fas fa-map-pin"></i> Waypoint ${index + 1}:</strong><br>
+                        <i class="fas fa-location-arrow"></i> Lat: ${wp.lat.toFixed(5)}<br>
+                        <i class="fas fa-location-arrow"></i> Lng: ${wp.lng.toFixed(5)}<br>
+                        <i class="fas fa-arrow-up"></i> Alt: <input type="number" class="altitude-input" 
+                              value="${wp.altitude}" min="0" max="80"
+                              onchange="updateAltitude(${index}, this.value)"> cm
+                    </div>
+                    <div class="waypoint-controls">
+                        <button class="delete-btn" onclick="deleteWaypoint(${index})">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+                
+                waypointDiv.appendChild(div);
+            });
+        }
+
+        function updateAltitude(index, value) {
+            let altitude = Math.min(parseFloat(Math.abs(value)) || 0, 80);
+            waypoints[index].altitude = altitude;
+            updateWaypointList();
+        }
+
+        function drawPolyline() {
+            if (polyline) map.removeLayer(polyline);
+            let latlngs = waypoints.map(wp => [wp.lat, wp.lng]);
+            if (latlngs.length >= 2) {
+                polyline = L.polyline(latlngs, { color: 'blue' }).addTo(map);
+            }
+        }
+
+        function deleteWaypoint(index) {
+            if (markers[index]) map.removeLayer(markers[index]);
+            markers.splice(index, 1);
+            waypoints.splice(index, 1);
+            updateWaypointList();
+            drawPolyline();
+        }
+
+        function clearAllWaypoints() {
+            markers.forEach(marker => {
+                if (marker) map.removeLayer(marker);
+            });
+            markers = [];
+            waypoints = [];
+            updateWaypointList();
+            if (polyline) {
+                map.removeLayer(polyline);
+                polyline = null;
+            }
+        }
+
+        function sendWaypoints() {
+            const btn = document.querySelector('.send-btn');
+            const originalText = btn.innerHTML;
+            
+            if (waypoints.length === 0) {
+                alert("No waypoints to send!");
+                return;
+            }
+            
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            btn.disabled = true;
+            btn.classList.add('sending');
+
+            fetch('/send_waypoints', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ waypoints: waypoints })
+            })
+            .then(response => {
+                btn.innerHTML = '<i class="fas fa-check"></i> Sent Successfully!';
+                btn.classList.remove('sending');
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                btn.innerHTML = '<i class="fas fa-exclamation-circle"></i> Failed to Send';
+                btn.classList.remove('sending');
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
