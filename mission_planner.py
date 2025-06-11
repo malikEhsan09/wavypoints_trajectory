@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, render_template
 import serial
 import json
 import heapq
-import time
 
 app = Flask(__name__)
 
@@ -17,20 +16,8 @@ ZOOM_START = 14
 # Waypoints list
 waypoints = []
 
-# Initialize serial connection
-ser = None
-def init_serial():
-    global ser
-    try:
-        ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
-        print(f"Successfully connected to {SERIAL_PORT}")
-        return True
-    except serial.SerialException as e:
-        print(f"Failed to connect to {SERIAL_PORT}: {e}")
-        return False
-
-# Try to initialize serial connection
-init_serial()
+# Open serial connection at the start
+ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
 
 @app.route('/')
 def map_view():
@@ -101,22 +88,12 @@ def a_star_pathfinding(start, waypoints):
 # Function to send waypoints to ground ESP32
 
 def send_waypoints_to_esp32(waypoints):
-    global ser
-    if ser is None:
-        print("Serial connection not available. Attempting to reconnect...")
-        if not init_serial():
-            print("Failed to establish serial connection")
-            return False
-    
     try:
         data = json.dumps({'waypoints': waypoints})
         ser.write(data.encode('utf-8'))
         print(f"Waypoints sent: {data}")
-        return True
     except serial.SerialException as e:
         print(f"Serial error: {e}")
-        ser = None  # Reset serial connection
-        return False
 
 if __name__ == '__main__':
     app.run(debug=False)
