@@ -30,7 +30,8 @@
     </div>
 
     <script>
-        let map = L.map('map').setView([33.65648, 73.01638], 17);
+        // Center on Pakistan (approximately Islamabad)
+        let map = L.map('map').setView([30.3753, 69.3451], 6);
         let waypoints = [];
         let markers = [];
         let polyline = null;
@@ -38,6 +39,11 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
+
+        // Add a marker for the center of Pakistan
+        L.marker([33.6844, 73.0479]).addTo(map)
+            .bindPopup('Pakistan')
+            .openPopup();
 
         updateWaypointList();
 
