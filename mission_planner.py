@@ -16,8 +16,14 @@ ZOOM_START = 14
 # Waypoints list
 waypoints = []
 
-# Open serial connection at the start
-ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
+# Initialize serial connection
+ser = None
+try:
+    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
+    print(f"Successfully connected to {SERIAL_PORT}")
+except serial.SerialException as e:
+    print(f"Warning: Could not connect to {SERIAL_PORT}: {e}")
+    print("The web interface will still work, but waypoints won't be sent to the ESP32")
 
 @app.route('/')
 def map_view():
@@ -88,6 +94,10 @@ def a_star_pathfinding(start, waypoints):
 # Function to send waypoints to ground ESP32
 
 def send_waypoints_to_esp32(waypoints):
+    if ser is None:
+        print("Warning: Serial connection not available. Waypoints not sent to ESP32.")
+        return
+        
     try:
         data = json.dumps({'waypoints': waypoints})
         ser.write(data.encode('utf-8'))
