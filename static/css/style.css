@@ -56,6 +56,53 @@ body {
     z-index: 1;
 }
 
+.manual-input {
+    background: #34495e;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+.manual-input h3 {
+    color: #ecf0f1;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-group input {
+    padding: 8px;
+    border: 1px solid #2c3e50;
+    border-radius: 4px;
+    background: #2c3e50;
+    color: white;
+    width: 100%;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
+.add-btn {
+    background: #3498db;
+    color: white;
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.add-btn:hover {
+    background: #2980b9;
+}
+
 .waypoint-item {
     display: flex;
     justify-content: space-between;

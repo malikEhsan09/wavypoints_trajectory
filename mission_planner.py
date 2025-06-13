@@ -1,109 +1,61 @@
 from flask import Flask, request, jsonify, render_template
-import serial
-import json
-import heapq
+import requests
+import time
 
 app = Flask(__name__)
 
-# Serial configuration (adjust port and baudrate)
-SERIAL_PORT = 'COM4'  # Change this to your ground ESP32's port
-BAUDRATE = 115200
-
 # Map configuration
-START_LOCATION = (33.6844, 73.0479, 100)  # Default start location with altitude
+START_LOCATION = (33.6844, 73.0479, 100)  # Default start location with altitude in meters
 ZOOM_START = 14
 
 # Waypoints list
 waypoints = []
 
-# Initialize serial connection
-ser = None
-try:
-    ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
-    print(f"Successfully connected to {SERIAL_PORT}")
-except serial.SerialException as e:
-    print(f"Warning: Could not connect to {SERIAL_PORT}: {e}")
-    print("The web interface will still work, but waypoints won't be sent to the ESP32")
+def get_elevation(lat, lng):
+    """Get elevation data from OpenTopography API"""
+    try:
+        url = f"https://portal.opentopography.org/API/astergdem?demtype=ASTERGDEMV3&south={lat-0.001}&north={lat+0.001}&west={lng-0.001}&east={lng+0.001}&outputFormat=AAIGrid"
+        response = requests.get(url)
+        if response.status_code == 200:
+            # Parse the elevation data from the response
+            data = response.text.split('\n')
+            if len(data) > 6:  # Check if we have elevation data
+                elevation = float(data[6].strip())
+                # Add a safety margin of 5 meters to the elevation
+                return min(elevation + 5, 100)  # Max 100m height
+        return 10  # Default to 10m if elevation data not available
+    except Exception as e:
+        print(f"Error getting elevation: {e}")
+        return 10  # Default to 10m if there's an error
 
 @app.route('/')
 def map_view():
-    return render_template('index.html')  # Renders the external HTML file
+    return render_template('index.html')
 
-@app.route('/send_waypoints', methods=['POST'])
-def receive_waypoints():
-    global waypoints
+@app.route('/add_manual_point', methods=['POST'])
+def add_manual_point():
     data = request.get_json()
-    if not data or 'waypoints' not in data:
-        return jsonify({'error': 'Invalid data format, expected waypoints list'}), 400
+    if not data or 'lat' not in data or 'lng' not in data:
+        return jsonify({'error': 'Invalid data format, expected lat and lng'}), 400
     
     try:
-        waypoints = []
-        for wp in data['waypoints']:
-            lat = wp.get('lat')
-            lng = wp.get('lng')
-            alt = wp.get('altitude', 50)  # Default altitude to 100m if not provided
-            
-            if lat is None or lng is None:
-                return jsonify({'error': 'Invalid waypoint format, missing lat/lng'}), 400
-            
-            waypoints.append((lat, lng, alt))
-    except Exception as e:
-        return jsonify({'error': f'Error processing waypoints: {str(e)}'}), 400
-    
-    if not waypoints:
-        return jsonify({'error': 'No valid waypoints received'}), 400
-    
-    # Apply A* Pathfinding including altitude
-    optimized_path = a_star_pathfinding(START_LOCATION, waypoints)
-    
-    # Send optimized waypoints to ESP32
-    send_waypoints_to_esp32(optimized_path)
-    
-    return jsonify({'message': 'Waypoints sent successfully!', 'waypoints': optimized_path})
-
-# A* Pathfinding Algorithm
-
-def a_star_pathfinding(start, waypoints):
-    def heuristic(a, b):
-        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
-
-    open_list = [(0, start)]
-    heapq.heapify(open_list)
-    came_from = {}
-    g_score = {start: 0}
-
-    optimized_path = []
-
-    while open_list:
-        _, current = heapq.heappop(open_list)
-
-        if current in waypoints:
-            optimized_path.append(current)
-            waypoints.remove(current)
-
-        for neighbor in waypoints:
-            temp_g_score = g_score[current] + heuristic(current, neighbor)
-            if neighbor not in g_score or temp_g_score < g_score[neighbor]:
-                g_score[neighbor] = temp_g_score
-                priority = temp_g_score + heuristic(neighbor, waypoints[0])
-                heapq.heappush(open_list, (priority, neighbor))
-                came_from[neighbor] = current
-
-    return optimized_path
-
-# Function to send waypoints to ground ESP32
-
-def send_waypoints_to_esp32(waypoints):
-    if ser is None:
-        print("Warning: Serial connection not available. Waypoints not sent to ESP32.")
-        return
+        lat = float(data['lat'])
+        lng = float(data['lng'])
         
-    try:
-        data = json.dumps({'waypoints': waypoints})
-        ser.write(data.encode('utf-8'))
-        print(f"Waypoints sent: {data}")
-    except serial.SerialException as e:
-        print(f"Serial error: {e}")
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            return jsonify({'error': 'Invalid coordinates'}), 400
+        
+        # Get elevation for the coordinates
+        altitude = get_elevation(lat, lng)
+            
+        waypoints.append((lat, lng, altitude))
+        return jsonify({
+            'message': 'Point added successfully',
+            'waypoints': waypoints,
+            'altitude': altitude
+        })
+    except ValueError:
+        return jsonify({'error': 'Invalid coordinate values'}), 400
 
 if __name__ == '__main__':
     app.run(debug=False)
